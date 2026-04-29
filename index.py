@@ -1,7 +1,8 @@
-from http.server import BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, HTTPServer
 import yt_dlp
 import json
-import requests  # Pastikan Anda menambahkan 'requests' di requirements.txt
+import requests  
+import os
 from urllib.parse import urlparse, parse_qs
 
 class handler(BaseHTTPRequestHandler):
@@ -11,9 +12,17 @@ class handler(BaseHTTPRequestHandler):
         params = parse_qs(query)
         
         url = params.get('url', [None])[0]
-        # Default action adalah 'info' (mengembalikan JSON), 
-        # jika diubah jadi 'download', maka akan mem-proxy file
         action = params.get('action', ['info'])[0] 
+
+        # --- ENDPOINT KHUSUS UPTIMEROBOT ---
+        if action == 'ping':
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "Server Render hidup dan siap mem-proxy!"}).encode('utf-8'))
+            return
+        # -----------------------------------
 
         if not url:
             self.send_response(400)
@@ -48,7 +57,6 @@ class handler(BaseHTTPRequestHandler):
                 platform_name = info.get('extractor_key', 'video')
 
                 # 4. PERCABANGAN AKSI (JSON vs DOWNLOAD)
-# 4. PERCABANGAN AKSI (JSON vs DOWNLOAD)
                 if action == 'download':
                     # --- MODE PROXY BYPASS (STREAMING LANGSUNG TANPA /TMP) ---
                     if not direct_url:
@@ -97,8 +105,6 @@ class handler(BaseHTTPRequestHandler):
 
                 else:
                     # --- MODE INFO JSON (DEFAULT) ---
-                    # ... (kode JSON Anda yang sebelumnya tetap di sini) ...
-                    # --- MODE INFO JSON (DEFAULT) ---
                     self.send_response(200)
                     self.send_header('Content-type', 'application/json')
                     self.send_header('Access-Control-Allow-Origin', '*')
@@ -130,3 +136,21 @@ class handler(BaseHTTPRequestHandler):
                 "error": str(e)
             }
             self.wfile.write(json.dumps(error_data).encode('utf-8'))
+
+# ==========================================
+# BLOK WAJIB UNTUK RENDER.COM
+# ==========================================
+if __name__ == '__main__':
+    # Render memberikan port dinamis melalui Environment Variable 'PORT'
+    # Jika dijalankan di lokal, akan menggunakan port 8000
+    port = int(os.environ.get('PORT', 8000))
+    server_address = ('0.0.0.0', port)
+    
+    httpd = HTTPServer(server_address, handler)
+    print(f"🚀 Server berjalan dan mendengarkan di port {port}...")
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    httpd.server_close()
+    print("Server dihentikan.")
