@@ -10,7 +10,6 @@ class handler(BaseHTTPRequestHandler):
         params = parse_qs(query)
         url = params.get('url', [None])[0]
 
-        # Konfigurasi Header CORS agar bisa diakses bot Baileys Anda
         self.send_response(200 if url else 400)
         self.send_header('Content-type', 'application/json')
         self.send_header('Access-Control-Allow-Origin', '*')
@@ -23,11 +22,12 @@ class handler(BaseHTTPRequestHandler):
         # 2. Konfigurasi yt-dlp Ekstra Kuat untuk Semua Platform
         ydl_opts = {
             'format': 'best',        # Meminta kualitas terbaik yang tergabung (video+audio)
-            'skip_download': True,   # WAJIB di Vercel agar server tidak crash
+            'skip_download': True,   
             'quiet': True,
             'no_warnings': True,
-            'geo_bypass': True,      # Membantu menembus blokir wilayah (berguna untuk IG/TikTok)
-            'extractor_retries': 3   # Coba ulang 3x jika server platform sedang sibuk
+            'geo_bypass': True,     
+            'extractor_retries': 3
+    
         }
 
         try:
@@ -50,11 +50,13 @@ class handler(BaseHTTPRequestHandler):
                 response_data = {
                     "success": True,
                     "data": {
-                        "platform": info.get('extractor_key'), # Memberitahu bot ini dari platform apa (Tiktok, Twitter, dll)
+                        "platform": info.get('extractor_key'),
+                         "headers": info.get('http_headers', {}),# Memberitahu bot ini dari platform apa (Tiktok, Twitter, dll)
                         "title": info.get('title', 'Tanpa Judul'),
                         "duration": info.get('duration'),
                         "thumbnail": info.get('thumbnail'),
                         "direct_url": direct_url
+                        
                     }
                 }
                 
