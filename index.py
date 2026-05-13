@@ -1,79 +1,55 @@
-from http.server import BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
+from fastapi import FastAPI, Query, HTTPException
 import yt_dlp
-import json
 
+app = FastAPI()
 
-class handler(BaseHTTPRequestHandler):
+@app.get("/")
+def root():
+    return {"status": "ok", "usage": "/info?url=VIDEO_URL"}
 
-    def do_GET(self):
-        try:
-            # ======================
-            # QUERY PARAMS
-            # ======================
-            query = urlparse(self.path).query
-            params = parse_qs(query)
-            url = params.get("url", [None])[0]
+@app.get("/info")
+def get_info(url: str = Query(..., description="Video URL")):
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "geo_bypass": True,
+        "extractor_retries": 5,
+        "socket_timeout": 30,
+        "http_headers": {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/140.0.0.0 Safari/537.36"
+            ),
+            "Referer": "https://www.bilibili.tv/",
+            "Accept-Language": "en-US,en;q=0.9",
+        },
+    }
 
-            if not url:
-                self._respond(400, {"success": False, "error": "missing url parameter"})
-                return
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
 
-            # ======================
-            # YT-DLP OPTIONS
-            # ======================
-            ydl_opts = {
-                "quiet": True,
-                "no_warnings": True,
-                "skip_download": True,
-                "geo_bypass": True,
-                "extractor_retries": 5,
-                "socket_timeout": 30,
-                "http_headers": {
-                    "User-Agent": (
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                        "AppleWebKit/537.36 (KHTML, like Gecko) "
-                        "Chrome/140.0.0.0 Safari/537.36"
-                    ),
-                    "Referer": "https://www.bilibili.tv/",
-                    "Accept-Language": "en-US,en;q=0.9",
-                },
-            }
+            if info is None:
+                raise HTTPException(
+                    status_code=500,
+                    detail="yt-dlp returned no info (mungkin diblok atau video private)"
+                )
 
-            # ======================
-            # EXTRACT
-            # ======================
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-
-                # Guard: extract_info can return None
+            if info.get("_type") == "playlist":
+                entries = info.get("entries") or []
+                if not entries:
+                    raise HTTPException(status_code=500, detail="playlist kosong")
+                info = entries[0]
                 if info is None:
-                    self._respond(500, {"success": False, "error": "yt-dlp returned no info (unsupported URL or private video)"})
-                    return
+                    raise HTTPException(status_code=500, detail="entry pertama None")
 
-                # If it's a playlist, unwrap the first entry
-                if info.get("_type") == "playlist":
-                    entries = info.get("entries") or []
-                    if not entries:
-                        self._respond(500, {"success": False, "error": "playlist is empty"})
-                        return
-                    info = entries[0]
-                    if info is None:
-                        self._respond(500, {"success": False, "error": "first playlist entry is None"})
-                        return
+            return ydl.sanitize_info(info)
 
-                info = ydl.sanitize_info(info)
-
-            self._respond(200, info)
-
-        except yt_dlp.utils.DownloadError as e:
-            self._respond(500, {"success": False, "error": f"DownloadError: {str(e)}"})
-        except Exception as e:
-            self._respond(500, {"success": False, "error": str(e)})
-
-    def _respond(self, status: int, data: dict):
-        self.send_response(status)
-        self.send_header("Content-type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-        self.wfile.write(json.dumps(data, ensure_ascii=False).encode("utf-8"))
+    except yt_dlp.utils.DownloadError as e:
+        raise HTTPException(status_code=500, detail=f"DownloadError: {str(e)}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
